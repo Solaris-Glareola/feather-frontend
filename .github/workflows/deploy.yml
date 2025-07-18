@@ -1,67 +1,42 @@
-name: Deploy React App via SSH (with password)
+name: Deploy to Server
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout кода
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Установка Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
+    - name: Build Docker image
+      run: docker build -t react-app .
 
-      - name: Установка зависимостей
-        run: npm install
+    - name: Save Docker image
+      run: docker save -o react-app.tar react-app
 
-      - name: Сборка проекта
-        run: npm run build
+    - name: Deploy to Server
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        password: ${{ secrets.SSH_PASSWORD }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        source: "react-app.tar"
+        target: "/home/deploy"
 
-      - name: Сборка Docker-образа
-        run: |
-          docker build -t my-react-app .
-
-      - name: Сохранение образа в архив
-        run: |
-          docker save my-react-app > my-react-app.tar
-
-      - name: Установка sshpass и scp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sshpass
-
-      - name: Передача Docker-образа на сервер
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-        run: |
-          sshpass -p "$SERVER_PASSWORD" scp \
-            -o StrictHostKeyChecking=no \
-            my-react-app.tar \
-            $SERVER_USER@$SERVER_IP:~/my-react-app.tar
-
-      - name: Запуск команд на сервере
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-        run: |
-          sshpass -p "$SERVER_PASSWORD" ssh \
-            -o StrictHostKeyChecking=no \
-            $SERVER_USER@$SERVER_IP << 'EOF'
-              mkdir -p ~/my-react-app
-              mv ~/my-react-app.tar ~/my-react-app/
-              cd ~/my-react-app
-              docker stop my-react-app || true
-              docker rm my-react-app || true
-              docker rmi my-react-app || true
-              docker load < my-react-app.tar
-              docker run -d -p 80:80 --name my-react-app my-react-app
+    - name: SSH Commands
+      uses: appleboy/ssh-action@v0.1.4
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        password: ${{ secrets.SSH_PASSWORD }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          docker load -i /home/deploy/react-app.tar
+          docker stop react-container || true
+          docker rm react-container || true
+          docker run -d --name react-container -p 80:80 react-app
+          rm /home/deploy/react-app.tar
