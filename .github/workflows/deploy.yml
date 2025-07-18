@@ -1,0 +1,71 @@
+name: Deploy React App via SSH (with password)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout кода
+        uses: actions/checkout@v4
+
+      - name: Установка Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Установка зависимостей
+        run: npm install
+
+      - name: Сборка проекта
+        run: npm run build
+
+      - name: Установка Docker
+        run: sudo apt-get install -y docker.io
+
+      - name: Сборка Docker-образа
+        run: |
+          docker build -t my-react-app .
+
+      - name: Сохранение образа в архив
+        run: |
+          docker save my-react-app > my-react-app.tar
+
+      - name: Установка sshpass и scp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Передача Docker-образа на сервер
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          sshpass -p "$SERVER_PASSWORD" scp \
+            -o StrictHostKeyChecking=no \
+            my-react-app.tar \
+            $SERVER_USER@$SERVER_IP:~/my-react-app.tar
+
+      - name: Запуск команд на сервере
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          sshpass -p "$SERVER_PASSWORD" ssh \
+            -o StrictHostKeyChecking=no \
+            $SERVER_USER@$SERVER_IP << 'EOF'
+              mkdir -p ~/my-react-app
+              mv ~/my-react-app.tar ~/my-react-app/
+              cd ~/my-react-app
+              docker stop my-react-app || true
+              docker rm my-react-app || true
+              docker rmi my-react-app || true
+              docker load < my-react-app.tar
+              docker run -d -p 80:80 --name my-react-app my-react-app
+EOF
