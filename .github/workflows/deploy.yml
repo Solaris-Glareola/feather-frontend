@@ -68,4 +68,3 @@ jobs:
               docker rmi my-react-app || true
               docker load < my-react-app.tar
               docker run -d -p 80:80 --name my-react-app my-react-app
-EOF
