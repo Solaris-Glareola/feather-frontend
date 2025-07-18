@@ -24,9 +24,6 @@ jobs:
       - name: Сборка проекта
         run: npm run build
 
-      - name: Установка Docker
-        run: sudo apt-get install -y docker.io
-
       - name: Сборка Docker-образа
         run: |
           docker build -t my-react-app .
